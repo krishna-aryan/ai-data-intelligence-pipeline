@@ -63,6 +63,49 @@ The crawler in [src/crawlers](src/crawlers) provides a reusable asynchronous HTT
 
 This is intentionally separated from the later LLM, storage, and entity-resolution stages so the fetch layer remains reusable and testable.
 
+## Selected research source for Step 3
+
+Selected source: Semantic Scholar Graph API
+
+- Source endpoint: https://api.semanticscholar.org/graph/v1/paper/search
+- Source page: https://www.semanticscholar.org/
+- Why it was selected: it exposes a public, structured API with paper metadata including title, authors, publication information, paper URL, and optional source links. This makes it suitable for a deterministic, offline-testable adapter without arbitrary HTML scraping.
+
+## Research-paper ingestion architecture
+
+The current Step 3 architecture is intentionally small and explicit:
+
+Semantic Scholar API
+      ↓
+AsyncHTTPCrawler
+      ↓
+ResearchPaperAdapter
+      ↓
+ResearchPaper Pydantic model
+
+The adapter converts normalized API responses into the existing project schema while preserving the legitimate source URL and publication metadata.
+
+## Fields currently extracted
+
+For each paper record, the current adapter extracts:
+
+- title
+- authors
+- paper_url
+- github_url (only when legitimately present in the source response)
+- github_stars (only when legitimately present in the source response)
+- published_date
+- record source metadata
+
+## GitHub information limitation
+
+This step does not perform GitHub API enrichment. If the selected source does not provide a legitimate GitHub URL, the adapter keeps:
+
+- `github_url = None`
+- `github_stars = None`
+
+No GitHub repository or star count is invented.
+
 ## Why asynchronous crawling is being used
 
 Many public sources are independent and can be fetched in parallel. Asynchronous I/O reduces total wall-clock time for large crawl batches while keeping the code path straightforward and testable. This makes it suitable as the foundation for future scraping workflows without committing to a full distributed architecture yet.
@@ -73,21 +116,70 @@ Many public sources are independent and can be fetched in parallel. Asynchronous
 import asyncio
 
 from src.crawlers.http_client import AsyncHTTPCrawler
+from src.crawlers.research_papers import ResearchPaperAdapter
 
 
 async def main() -> None:
     crawler = AsyncHTTPCrawler(timeout=10.0, max_concurrency=5)
-    results = await crawler.fetch_many([
-        "https://example.com",
-        "https://example.org",
-    ])
+    adapter = ResearchPaperAdapter(crawler)
+    results = await adapter.fetch_and_parse("transformer model", limit=5)
 
     for item in results:
-        print(item.requested_url, item.status, item.success, item.error)
+        print(item.content.title)
+        print(item.content.authors)
+        print(item.content.paper_url)
 
 
 asyncio.run(main())
 ```
+
+## Current implementation status
+
+This step only establishes a deterministic research-paper ingestion foundation. It does not yet collect 1,000+ papers, does not yet enrich GitHub metadata from the GitHub API, and does not yet implement LLM extraction or other dataset types.
+
+## Local setup
+
+1. Create a virtual environment:
+   python -m venv .venv
+   .venv\Scripts\activate
+
+2. Install dependencies:
+   pip install -r requirements.txt
+
+3. Copy the example environment file:
+   copy .env.example .env
+
+4. Update the environment variables in .env as needed.
+
+## Environment variables
+
+The project expects environment variables for runtime and future integrations. Example placeholders are included in [.env.example](.env.example).
+
+Required for foundation:
+
+- APP_NAME
+- ENVIRONMENT
+- LOG_LEVEL
+- MAX_CONCURRENCY
+
+Planned future variables:
+
+- GEMINI_API_KEY
+- GROQ_API_KEY
+- DEEPSEEK_API_KEY
+- DATABASE_URL
+- REDIS_URL
+- GOOGLE_SHEETS_CREDENTIALS
+
+## Running tests
+
+To run the project test suite:
+
+pytest
+
+## Notes
+
+This project is intentionally scoped to a clean, maintainable Python backend foundation. It does not implement a frontend, does not claim the 1,000-paper goal is complete yet, and does not fabricate missing research metadata.
 
 ## Local setup
 

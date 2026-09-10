@@ -2,5 +2,6 @@
 
 from .http_client import AsyncHTTPCrawler
 from .models import CrawlResult
+from .research_papers import ResearchPaperAdapter
 
-__all__ = ["AsyncHTTPCrawler", "CrawlResult"]
+__all__ = ["AsyncHTTPCrawler", "CrawlResult", "ResearchPaperAdapter"]
