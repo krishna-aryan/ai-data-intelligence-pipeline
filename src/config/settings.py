@@ -18,6 +18,9 @@ class Settings:
     llm_timeout: int = 30
     llm_max_input_chars: int = 20000
     llm_chunk_overlap_chars: int = 400
+    gemini_model: str = "gemini-1.5-flash"
+    groq_model: str = "llama-3.1-8b-instant"
+    deepseek_model: str = "deepseek-chat"
     gemini_api_key: str | None = None
     groq_api_key: str | None = None
     deepseek_api_key: str | None = None
@@ -34,6 +37,9 @@ _DEFAULTS: Final[dict[str, object]] = {
     "MAX_CONCURRENCY": 8,
     "LLM_PROVIDER": "gemini",
     "LLM_MODEL": "gemini-1.5-flash",
+    "GEMINI_MODEL": "gemini-1.5-flash",
+    "GROQ_MODEL": "llama-3.1-8b-instant",
+    "DEEPSEEK_MODEL": "deepseek-chat",
     "LLM_TIMEOUT": 30,
     "LLM_MAX_INPUT_CHARS": 20000,
     "LLM_CHUNK_OVERLAP_CHARS": 400,
@@ -49,6 +55,9 @@ def load_settings() -> Settings:
     max_concurrency = int(os.getenv("MAX_CONCURRENCY", str(_DEFAULTS["MAX_CONCURRENCY"])))
     llm_provider = os.getenv("LLM_PROVIDER", str(_DEFAULTS["LLM_PROVIDER"]))
     llm_model = os.getenv("LLM_MODEL", str(_DEFAULTS["LLM_MODEL"]))
+    gemini_model = os.getenv("GEMINI_MODEL", str(_DEFAULTS["GEMINI_MODEL"]))
+    groq_model = os.getenv("GROQ_MODEL", str(_DEFAULTS["GROQ_MODEL"]))
+    deepseek_model = os.getenv("DEEPSEEK_MODEL", str(_DEFAULTS["DEEPSEEK_MODEL"]))
     llm_timeout = int(os.getenv("LLM_TIMEOUT", str(_DEFAULTS["LLM_TIMEOUT"])))
     llm_max_input_chars = int(os.getenv("LLM_MAX_INPUT_CHARS", str(_DEFAULTS["LLM_MAX_INPUT_CHARS"])))
     llm_chunk_overlap_chars = int(
@@ -65,6 +74,9 @@ def load_settings() -> Settings:
         llm_timeout=llm_timeout,
         llm_max_input_chars=llm_max_input_chars,
         llm_chunk_overlap_chars=llm_chunk_overlap_chars,
+        gemini_model=gemini_model,
+        groq_model=groq_model,
+        deepseek_model=deepseek_model,
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),

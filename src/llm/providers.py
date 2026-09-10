@@ -11,24 +11,11 @@ from .fallback import ProviderRequestError
 
 
 class GeminiProvider(BaseLLMProvider):
-    def __init__(
-        self,
-        *,
-        api_key: str | None = None,
-        model: str = "gemini-1.5-flash",
-        api_base_url: str | None = None,
-        timeout: int = 30,
-    ) -> None:
+    def __init__(self, *, api_key: str | None = None, model: str = "gemini-1.5-flash", timeout: int = 30):
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
-        self.api_base_url = api_base_url or (
-            "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        )
         self.provider_name = "gemini"
-
-    def is_available(self) -> bool:
-        return bool(self.api_key)
 
     async def generate(self, prompt: str) -> str:
         if not self.api_key:
@@ -42,21 +29,16 @@ class GeminiProvider(BaseLLMProvider):
 
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
-        def _do_request() -> str:
-            url = self.api_base_url.format(model=self.model)
+        def _request() -> str:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
             data = json.dumps(payload).encode("utf-8")
-            req = request.Request(
-                f"{url}?key={self.api_key}",
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
+            req = request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
             try:
                 with request.urlopen(req, timeout=self.timeout) as response:
                     body = response.read().decode("utf-8")
             except error.HTTPError as exc:
+                parsed = exc.read().decode("utf-8", errors="replace")
                 status = exc.code
-                detail = exc.read().decode("utf-8", errors="replace")
                 if status == 413:
                     raise ProviderRequestError(
                         provider_name=self.provider_name,
@@ -71,14 +53,14 @@ class GeminiProvider(BaseLLMProvider):
                         provider_name=self.provider_name,
                         error_type="rate_limited" if status == 429 else "temporary_server_error",
                         retryable=True,
-                        message=detail,
+                        message=parsed,
                         status_code=status,
                     ) from exc
                 raise ProviderRequestError(
                     provider_name=self.provider_name,
                     error_type="unknown_provider_error",
                     retryable=False,
-                    message=detail,
+                    message=parsed,
                     status_code=status,
                 ) from exc
             except (TimeoutError, asyncio.TimeoutError):
@@ -132,18 +114,15 @@ class GeminiProvider(BaseLLMProvider):
                 )
             return text
 
-        return await asyncio.to_thread(_do_request)
+        return await asyncio.to_thread(_request)
 
 
 class GroqProvider(BaseLLMProvider):
-    def __init__(self, *, api_key: str | None = None, model: str = "llama-3.1-8b-instant", timeout: int = 30) -> None:
+    def __init__(self, *, api_key: str | None = None, model: str = "llama-3.1-8b-instant", timeout: int = 30):
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
         self.provider_name = "groq"
-
-    def is_available(self) -> bool:
-        return bool(self.api_key)
 
     async def generate(self, prompt: str) -> str:
         if not self.api_key:
@@ -161,7 +140,7 @@ class GroqProvider(BaseLLMProvider):
             "temperature": 0,
         }
 
-        def _do_request() -> str:
+        def _request() -> str:
             url = "https://api.groq.com/openai/v1/chat/completions"
             data = json.dumps(payload).encode("utf-8")
             req = request.Request(
@@ -247,18 +226,15 @@ class GroqProvider(BaseLLMProvider):
                 )
             return text
 
-        return await asyncio.to_thread(_do_request)
+        return await asyncio.to_thread(_request)
 
 
 class DeepSeekProvider(BaseLLMProvider):
-    def __init__(self, *, api_key: str | None = None, model: str = "deepseek-chat", timeout: int = 30) -> None:
+    def __init__(self, *, api_key: str | None = None, model: str = "deepseek-chat", timeout: int = 30):
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
         self.provider_name = "deepseek"
-
-    def is_available(self) -> bool:
-        return bool(self.api_key)
 
     async def generate(self, prompt: str) -> str:
         if not self.api_key:
@@ -276,7 +252,7 @@ class DeepSeekProvider(BaseLLMProvider):
             "temperature": 0,
         }
 
-        def _do_request() -> str:
+        def _request() -> str:
             url = "https://api.deepseek.com/v1/chat/completions"
             data = json.dumps(payload).encode("utf-8")
             req = request.Request(
@@ -362,18 +338,22 @@ class DeepSeekProvider(BaseLLMProvider):
                 )
             return text
 
-        return await asyncio.to_thread(_do_request)
+        return await asyncio.to_thread(_request)
 
 
 def build_default_providers(settings=None):
     settings = settings or load_settings()
     providers = []
+
     if settings.gemini_api_key:
         providers.append(GeminiProvider(api_key=settings.gemini_api_key, model=settings.gemini_model, timeout=settings.llm_timeout))
     if settings.groq_api_key:
         providers.append(GroqProvider(api_key=settings.groq_api_key, model=settings.groq_model, timeout=settings.llm_timeout))
     if settings.deepseek_api_key:
         providers.append(DeepSeekProvider(api_key=settings.deepseek_api_key, model=settings.deepseek_model, timeout=settings.llm_timeout))
+
+    if not providers:
+        return []
     return providers
 
 
