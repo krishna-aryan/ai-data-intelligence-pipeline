@@ -16,6 +16,8 @@ class Settings:
     llm_provider: str = "gemini"
     llm_model: str = "gemini-1.5-flash"
     llm_timeout: int = 30
+    llm_max_input_chars: int = 20000
+    llm_chunk_overlap_chars: int = 400
     gemini_api_key: str | None = None
     groq_api_key: str | None = None
     deepseek_api_key: str | None = None
@@ -33,6 +35,8 @@ _DEFAULTS: Final[dict[str, object]] = {
     "LLM_PROVIDER": "gemini",
     "LLM_MODEL": "gemini-1.5-flash",
     "LLM_TIMEOUT": 30,
+    "LLM_MAX_INPUT_CHARS": 20000,
+    "LLM_CHUNK_OVERLAP_CHARS": 400,
 }
 
 
@@ -46,6 +50,10 @@ def load_settings() -> Settings:
     llm_provider = os.getenv("LLM_PROVIDER", str(_DEFAULTS["LLM_PROVIDER"]))
     llm_model = os.getenv("LLM_MODEL", str(_DEFAULTS["LLM_MODEL"]))
     llm_timeout = int(os.getenv("LLM_TIMEOUT", str(_DEFAULTS["LLM_TIMEOUT"])))
+    llm_max_input_chars = int(os.getenv("LLM_MAX_INPUT_CHARS", str(_DEFAULTS["LLM_MAX_INPUT_CHARS"])))
+    llm_chunk_overlap_chars = int(
+        os.getenv("LLM_CHUNK_OVERLAP_CHARS", str(_DEFAULTS["LLM_CHUNK_OVERLAP_CHARS"]))
+    )
 
     return Settings(
         app_name=app_name,
@@ -55,6 +63,8 @@ def load_settings() -> Settings:
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_timeout=llm_timeout,
+        llm_max_input_chars=llm_max_input_chars,
+        llm_chunk_overlap_chars=llm_chunk_overlap_chars,
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),

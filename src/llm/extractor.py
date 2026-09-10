@@ -1,30 +1,44 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, ValidationError
+from pydantic import ValidationError
 
+from src.config.settings import load_settings
 from src.models.schemas import (
     JobRecord,
     NewsRecord,
     ProductRecord,
     ResearchPaperRecord,
-    SourceInfo,
     StartupRecord,
 )
 
 from .base import LLMProvider
+from .chunking import TextChunk, chunk_text
 from .models import CanonicalRecord, ExtractionFailure, ExtractionResult
 
 
 class LLMExtractor:
     """Convert raw source text into canonical validated project records."""
 
-    def __init__(self, provider: LLMProvider, *, prompt_template: str | None = None) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider,
+        *,
+        prompt_template: str | None = None,
+        max_input_chars: int | None = None,
+        overlap_chars: int | None = None,
+        max_parallel_chunks: int = 4,
+    ) -> None:
+        settings = load_settings()
         self.provider = provider
         self.prompt_template = prompt_template or self._default_prompt()
+        self.max_input_chars = max_input_chars if max_input_chars is not None else settings.llm_max_input_chars
+        self.overlap_chars = overlap_chars if overlap_chars is not None else settings.llm_chunk_overlap_chars
+        self.max_parallel_chunks = max_parallel_chunks
 
     async def extract(
         self,
@@ -40,15 +54,83 @@ class LLMExtractor:
                 source_url=source_url,
             )
 
+        chunks = chunk_text(raw_text, max_chars=self.max_input_chars, overlap_chars=self.overlap_chars)
+        if not chunks:
+            return ExtractionFailure(
+                error_type="empty_response",
+                message="No chunks were produced for the provided source text.",
+                source_url=source_url,
+            )
+
+        if len(chunks) == 1:
+            return await self._extract_chunk(source_url=source_url, raw_text=chunks[0].text, source_name=source_name)
+
+        results = await self._extract_chunks_in_order(source_url=source_url, chunks=chunks, source_name=source_name)
+        if isinstance(results, ExtractionFailure):
+            return results
+
+        merged_records = self._merge_records(results)
+        return ExtractionResult(
+            source_url=source_url,
+            records=merged_records,
+            created_at=datetime.now(UTC),
+        )
+
+    async def _extract_chunks_in_order(
+        self,
+        *,
+        source_url: str,
+        chunks: list[TextChunk],
+        source_name: str,
+    ) -> list[ExtractionResult] | ExtractionFailure:
+        semaphore = asyncio.Semaphore(self.max_parallel_chunks)
+
+        async def _task(chunk: TextChunk) -> tuple[int, ExtractionResult | ExtractionFailure]:
+            async with semaphore:
+                result = await self._extract_chunk(
+                    source_url=source_url,
+                    raw_text=chunk.text,
+                    source_name=source_name,
+                )
+                return chunk.index, result
+
+        tasks = [_task(chunk) for chunk in chunks]
+        chunk_results = await asyncio.gather(*tasks)
+        ordered = sorted(chunk_results, key=lambda item: item[0])
+        failures = [value for _, value in ordered if isinstance(value, ExtractionFailure)]
+        if failures:
+            return failures[0]
+        return [value for _, value in ordered if isinstance(value, ExtractionResult)]
+
+    async def _extract_chunk(
+        self,
+        *,
+        source_url: str,
+        raw_text: str,
+        source_name: str,
+    ) -> ExtractionResult | ExtractionFailure:
         prompt = self._build_prompt(source_url=source_url, raw_text=raw_text)
 
         try:
             raw_response = await self.provider.generate(prompt)
-        except Exception as exc:  # pragma: no cover - provider implementations vary
+        except Exception as exc:
             return ExtractionFailure(
                 error_type="provider_failure",
                 message=f"LLM provider failure: {exc}",
                 source_url=source_url,
+            )
+
+        if self._looks_like_413(raw_response):
+            return ExtractionFailure(
+                error_type="provider_failure",
+                message="Provider rejected the request due to input size (413). Reduce chunk size before retrying.",
+                source_url=source_url,
+                details={
+                    "status_code": 413,
+                    "max_input_chars": self.max_input_chars,
+                    "overlap_chars": self.overlap_chars,
+                    "suggested_action": "reduce_chunk_size_and_retry_without_automatic_recursive_retries",
+                },
             )
 
         response_text = self._normalize_response(raw_response)
@@ -128,7 +210,33 @@ class LLMExtractor:
         raise ValueError("Extraction payload must be a list or a dict containing records.")
 
     def _looks_like_record(self, payload: dict[str, Any]) -> bool:
-        return bool(payload.get("recordType")) or any(key in payload for key in ("entityName", "startupName", "company", "title"))
+        return bool(payload.get("recordType")) or any(
+            key in payload for key in ("entityName", "startupName", "company", "title")
+        )
+
+    def _merge_records(self, results: list[ExtractionResult]) -> list[CanonicalRecord]:
+        merged: list[CanonicalRecord] = []
+        seen: set[str] = set()
+
+        for result in results:
+            for record in result.records:
+                key = self._record_identity(record)
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(record)
+
+        return merged
+
+    def _record_identity(self, record: CanonicalRecord) -> str:
+        payload = record.model_dump(mode="json", exclude_none=True)
+        source = payload.get("source")
+        if isinstance(source, dict):
+            source.pop("url", None)
+        content = payload.get("content")
+        if isinstance(content, dict):
+            content = dict(sorted(content.items()))
+        return json.dumps({"recordType": payload.get("recordType"), "content": content}, sort_keys=True)
 
     def _validate_record(
         self,
@@ -174,6 +282,12 @@ class LLMExtractor:
                 }
             ],
         )
+
+    def _looks_like_413(self, response: str | None) -> bool:
+        if response is None:
+            return False
+        text = response.lower()
+        return "413" in text or "request entity too large" in text or "payload too large" in text
 
     def _default_prompt(self) -> str:
         return """You are a strict data extraction engine.

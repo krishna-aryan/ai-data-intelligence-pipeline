@@ -45,6 +45,7 @@ class ExtractionFailure(BaseModel):
     ]
     message: str
     source_url: str | None = None
+    details: dict[str, object] | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -53,6 +53,22 @@ Planned modules and future work:
 
 The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
 
+## Chunking and 413 protection
+
+Large source documents are chunked before they are sent to an LLM provider. This is a conservative input-size guard designed to prevent oversized requests and provider-level 413 responses before they happen. The implementation is intentionally character-based rather than token-based because the codebase does not yet include a real tokenizer; this is a safe size-control heuristic until the tokenizer layer is introduced.
+
+The split logic prefers natural boundaries in this order:
+
+1. section/heading boundaries
+2. paragraph breaks
+3. sentence boundaries
+4. whitespace boundaries
+5. hard character fallback
+
+This avoids blindly slicing every N characters when a natural break exists. Overlap is configurable via `LLM_CHUNK_OVERLAP_CHARS` to keep enough context across adjacent chunks without creating unnecessary API load. If a provider still reports a 413, the extractor returns a structured failure that includes the chunk size and overlap metadata so a later implementation can reduce the chunk size and retry cleanly.
+
+Entity resolution is intentionally not performed during chunk merging. Large inputs are processed into validated canonical records and deduplicated only for exact duplicates; two different entities are not merged merely because their names look similar.
+
 raw source text
       ↓
 LLM provider
