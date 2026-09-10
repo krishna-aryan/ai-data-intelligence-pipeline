@@ -16,6 +16,7 @@ class Settings:
     gemini_api_key: str | None = None
     groq_api_key: str | None = None
     deepseek_api_key: str | None = None
+    github_token: str | None = None
     database_url: str | None = None
     redis_url: str | None = None
     google_sheets_credentials: str | None = None
@@ -45,6 +46,7 @@ def load_settings() -> Settings:
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        github_token=os.getenv("GITHUB_TOKEN"),
         database_url=os.getenv("DATABASE_URL"),
         redis_url=os.getenv("REDIS_URL"),
         google_sheets_credentials=os.getenv("GOOGLE_SHEETS_CREDENTIALS"),

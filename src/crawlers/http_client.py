@@ -42,7 +42,12 @@ class AsyncHTTPCrawler:
             await self._session.close()
         self._session = None
 
-    async def fetch_many(self, urls: Iterable[str]) -> list[CrawlResult]:
+    async def fetch_many(
+        self,
+        urls: Iterable[str],
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> list[CrawlResult]:
         urls_list = list(urls)
         if not urls_list:
             return []
@@ -51,15 +56,15 @@ class AsyncHTTPCrawler:
         session = await self.create_session()
 
         try:
-            tasks = [self._fetch_one(session, url, semaphore) for url in urls_list]
+            tasks = [self._fetch_one(session, url, semaphore, headers=headers) for url in urls_list]
             return await asyncio.gather(*tasks)
         finally:
             await self.close_session()
 
-    async def fetch(self, url: str) -> CrawlResult:
+    async def fetch(self, url: str, *, headers: Mapping[str, str] | None = None) -> CrawlResult:
         session = await self.create_session()
         try:
-            return await self._fetch_one(session, url, asyncio.Semaphore(self.max_concurrency))
+            return await self._fetch_one(session, url, asyncio.Semaphore(self.max_concurrency), headers=headers)
         finally:
             await self.close_session()
 
@@ -68,10 +73,15 @@ class AsyncHTTPCrawler:
         session: aiohttp.ClientSession,
         url: str,
         semaphore: asyncio.Semaphore,
+        *,
+        headers: Mapping[str, str] | None = None,
     ) -> CrawlResult:
         async with semaphore:
             try:
-                async with session.get(url) as response:
+                request_headers = dict(self.headers)
+                if headers:
+                    request_headers.update(headers)
+                async with session.get(url, headers=request_headers) as response:
                     text = await response.text()
                     if 200 <= response.status < 300:
                         return CrawlResult(

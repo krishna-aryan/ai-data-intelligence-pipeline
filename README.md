@@ -106,6 +106,25 @@ This step does not perform GitHub API enrichment. If the selected source does no
 
 No GitHub repository or star count is invented.
 
+## GitHub metadata enrichment
+
+This project also includes a small GitHub integration for resolving repository metadata associated with research papers. GitHub is used as a source of `stargazers_count` because it is the canonical public API for repository-level star data and keeps the metadata current without requiring a full scrape of GitHub pages.
+
+The integration is intentionally narrow:
+
+- only repository URLs already present on a paper are resolved
+- the REST API endpoint used is `GET https://api.github.com/repos/{owner}/{repo}`
+- an optional `GITHUB_TOKEN` can be configured via environment variables to increase API headroom when available
+- if no valid repository URL is present, or if the repo cannot be resolved, `github_stars` remains `None`
+
+To configure a token locally, add the following to `.env`:
+
+```bash
+GITHUB_TOKEN=your_token_here
+```
+
+For any paper with `github_url` set, the enrichment step resolves the repository and updates `github_stars` to the latest public `stargazers_count`. If the data is unavailable or the repository is missing, `github_stars` stays `None` instead of being guessed.
+
 ## Why asynchronous crawling is being used
 
 Many public sources are independent and can be fetched in parallel. Asynchronous I/O reduces total wall-clock time for large crawl batches while keeping the code path straightforward and testable. This makes it suitable as the foundation for future scraping workflows without committing to a full distributed architecture yet.
