@@ -49,6 +49,24 @@ Planned modules and future work:
 - date normalization and freshness rules
 - export to Google Sheets
 
+## LLM extraction foundation
+
+The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
+
+raw source text
+      ↓
+LLM provider
+      ↓
+JSON response
+      ↓
+Pydantic validation
+      ↓
+canonical project schema
+
+This stack intentionally keeps one provider abstraction and one extractor layer, while validating every extracted record against the existing canonical schemas in [src/models/schemas.py](src/models/schemas.py). The current implementation supports Gemini as the first provider, and later steps will add provider fallback, chunking, and broader enrichment.
+
+The extractor receives the source URL and raw text together, preserves the source URL on every record, and rejects malformed or hallucinated output before it becomes part of the canonical pipeline.
+
 ## Async crawler foundation
 
 The crawler in [src/crawlers](src/crawlers) provides a reusable asynchronous HTTP layer for fetching multiple URLs with a shared `aiohttp.ClientSession`. It supports:
