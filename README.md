@@ -21,14 +21,15 @@ The project is intentionally layered to keep responsibilities separated:
 
 ## Current implementation status
 
-This is an incremental implementation. At this stage, the project establishes the foundation and architecture only. It does not yet crawl live sources, call LLM providers, or claim support for large-scale production ingestion.
+This is an incremental implementation. The project now includes a reusable asynchronous crawling foundation, but it does not yet crawl production sources at scale, call LLM providers, resolve entities, or export to Google Sheets.
 
 Implemented so far:
 
 - Python project structure with modular src layout
 - Environment-based configuration system
 - Pydantic data models for the required record types
-- Initial test coverage for configuration and model validation
+- Reusable async HTTP crawler foundation
+- Local test coverage for success, HTTP failures, request exceptions, concurrency, and session cleanup
 - README and project metadata scaffolding
 
 Planned modules and future work:
@@ -47,6 +48,46 @@ Planned modules and future work:
 - deduplication and entity normalization
 - date normalization and freshness rules
 - export to Google Sheets
+
+## Async crawler foundation
+
+The crawler in [src/crawlers](src/crawlers) provides a reusable asynchronous HTTP layer for fetching multiple URLs with a shared `aiohttp.ClientSession`. It supports:
+
+- concurrent GET requests
+- configurable per-request timeout
+- configurable concurrency limit
+- default user-agent and HTTP headers
+- HTTP status handling
+- request/connection exception capture
+- session creation and cleanup inside the crawler lifecycle
+
+This is intentionally separated from the later LLM, storage, and entity-resolution stages so the fetch layer remains reusable and testable.
+
+## Why asynchronous crawling is being used
+
+Many public sources are independent and can be fetched in parallel. Asynchronous I/O reduces total wall-clock time for large crawl batches while keeping the code path straightforward and testable. This makes it suitable as the foundation for future scraping workflows without committing to a full distributed architecture yet.
+
+## Small usage example
+
+```python
+import asyncio
+
+from src.crawlers.http_client import AsyncHTTPCrawler
+
+
+async def main() -> None:
+    crawler = AsyncHTTPCrawler(timeout=10.0, max_concurrency=5)
+    results = await crawler.fetch_many([
+        "https://example.com",
+        "https://example.org",
+    ])
+
+    for item in results:
+        print(item.requested_url, item.status, item.success, item.error)
+
+
+asyncio.run(main())
+```
 
 ## Local setup
 
