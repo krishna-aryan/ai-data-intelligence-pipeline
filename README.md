@@ -61,6 +61,21 @@ For HTML/text inputs, the extraction precedence is deterministic: JSON-LD `dateP
 
 This freshness layer is a foundation for later News and Job ingestion work and does not claim that those workflows are complete.
 
+## News ingestion foundation
+
+This project includes a deterministic News ingestion adapter under [src/crawlers/news.py](src/crawlers/news.py). It uses a public structured RSS feed as the selected source for this step, rather than arbitrary HTML scraping or browser automation. The source is intentionally narrow and simple: it exposes a stable item structure with `title`, `link`, and `pubDate`, which makes it suitable for a deterministic offline test harness without requiring authentication or LLM processing.
+
+The adapter reuses the existing asynchronous HTTP crawler and the Step 10 freshness/date-normalization package. For each article, the pipeline is:
+
+1. fetch feed via the async crawler
+2. parse the feed item structure
+3. validate `title` and `source URL`
+4. normalize the publication date with `parse_publication_date(...)`
+5. evaluate freshness with `evaluate_freshness(...)`
+6. include only records whose age is within the configured 24-hour freshness window
+
+The default freshness rule is `age <= 24 hours => fresh`, while missing values, malformed values, future dates, and stale items are excluded rather than guessed. Unknown dates remain `unknown` and are never treated as fresh. URL deduplication is deterministic and conservative: same normalized source URL is kept once, while different URLs remain separate. Public source limitations include that the adapter intentionally supports a feed-based ingestion pattern rather than all possible News sites or arbitrary HTML pages.
+
 ## LLM extraction foundation
 
 The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
