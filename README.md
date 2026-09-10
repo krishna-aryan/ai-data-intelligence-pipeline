@@ -49,6 +49,18 @@ Planned modules and future work:
 - date normalization and freshness rules
 - export to Google Sheets
 
+## Freshness tracking and publication-date normalization
+
+The project includes a deterministic freshness foundation under [src/freshness](src/freshness). This layer is intentionally small and reusable: it normalizes absolute and relative publication dates, evaluates age against a supplied reference time, and keeps unknown or malformed dates from being treated as fresh.
+
+Supported absolute formats include ISO-8601 timestamps, RFC-style HTTP dates, common English month/day strings, explicit UTC values, and timestamps with timezone offsets. Supported relative expressions include `2 hours ago`, `30 minutes ago`, `15 mins ago`, `1 day ago`, and `yesterday`. All relative calculations are anchored to the explicit reference datetime supplied by the caller rather than the current wall clock, which keeps the behavior deterministic and testable.
+
+Freshness evaluation enforces a 24-hour freshness window: a publication datetime exactly 24 hours old is still `fresh`, while anything older than that is `stale`. A publication date in the future remains `future` and is never silently treated as fresh. Missing or unparseable dates remain `unknown` and do not produce a fake publication time.
+
+For HTML/text inputs, the extraction precedence is deterministic: JSON-LD `datePublished`, then `meta[property="article:published_time"]`, then `meta[name="date"]` / `meta[name="pubdate"]`, then `<time datetime="...">`, and finally visible text fallback. If a higher-priority source exists but is invalid, the parser falls through to the next valid source instead of inventing a date.
+
+This freshness layer is a foundation for later News and Job ingestion work and does not claim that those workflows are complete.
+
 ## LLM extraction foundation
 
 The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
