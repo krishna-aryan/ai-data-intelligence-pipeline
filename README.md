@@ -19,6 +19,14 @@ The project is intentionally layered to keep responsibilities separated:
 - Models: validate data contracts using Pydantic
 - Config: load environment variables and runtime settings
 
+## Batch concurrency and scaling
+
+The pipeline uses [src/batch.py](src/batch.py) as a reusable asynchronous batch boundary. `BoundedBatchProcessor` runs a fixed number of workers, applies an `asyncio.Semaphore`, and uses a bounded queue so a large iterable does not create one task per record. Results retain input order and expose deterministic counts for `total`, `succeeded`, `failed`, `skipped`, and elapsed duration.
+
+`PipelineOrchestrator.process_batch(...)` uses this layer with `BATCH_CONCURRENCY` from the environment (default `8`), or an explicit `batch_concurrency` constructor value. A mapping with `skip=True` is counted as skipped; handler exceptions and extraction failures are isolated to that input and do not cancel the rest of the batch. The existing crawler remains responsible for reusing one `aiohttp.ClientSession` per fetch batch, its semaphore, and its retry/backoff policy. LLM chunk-level concurrency and provider fallback remain unchanged, and SQLite remains the persistence backend.
+
+This is a local bounded-concurrency design rather than distributed infrastructure. To move toward hundreds of thousands of records later, a durable work queue and partitioned workers could feed the same batch and pipeline contracts, while source-specific crawlers could reuse long-lived sessions and bounded batches. SQLite can remain useful for local development and validation; a later storage adapter could replace it behind the existing repository contract without changing provenance, result aggregation, or failure isolation.
+
 ## Current implementation status
 
 This is an incremental implementation. The project now includes a reusable asynchronous crawling foundation, but it does not yet crawl production sources at scale, call LLM providers, resolve entities, or export to Google Sheets.

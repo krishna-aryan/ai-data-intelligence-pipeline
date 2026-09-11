@@ -5,6 +5,8 @@ from typing import Any, Iterable, Mapping
 
 from pydantic import BaseModel, Field
 
+from src.batch import BoundedBatchProcessor
+from src.config.settings import load_settings
 from src.entity_resolution import EntityResolver
 from src.llm import LLMExtractor
 from src.storage.repository import SQLiteRecordRepository
@@ -17,11 +19,20 @@ class _NullLLMProvider:
         raise RuntimeError("No LLM provider configured for pipeline processing.")
 
 
+class _PipelineRecordFailure(Exception):
+    def __init__(self, failure: dict[str, Any]) -> None:
+        self.failure = failure
+        super().__init__(failure.get("message", "Pipeline record failed."))
+
+
 class PipelineBatchResult(BaseModel):
     total: int = 0
     processed: int = 0
     stored: int = 0
     failed: int = 0
+    succeeded: int = 0
+    skipped: int = 0
+    duration_seconds: float = 0.0
     successes: list[dict[str, Any]] = Field(default_factory=list)
     failures: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -37,11 +48,13 @@ class PipelineOrchestrator:
         llm_provider: Any | None = None,
         entity_resolver: EntityResolver | None = None,
         extractor: LLMExtractor | None = None,
+        batch_concurrency: int | None = None,
     ) -> None:
         self.repository = repository or SQLiteRecordRepository()
         self.llm_provider = llm_provider or _NullLLMProvider()
         self.entity_resolver = entity_resolver or EntityResolver()
         self.extractor = extractor or LLMExtractor(self.llm_provider)
+        self.batch_concurrency = batch_concurrency if batch_concurrency is not None else load_settings().batch_concurrency
 
     async def process_batch(
         self,
@@ -52,18 +65,47 @@ class PipelineOrchestrator:
         result = PipelineBatchResult(total=0, processed=0, stored=0, failed=0)
         overrides = provider_response_overrides or {}
 
-        for item in records:
-            result.total += 1
+        async def handle(item: Mapping[str, Any] | Any) -> dict[str, Any]:
             record_result = await self.process_record(item, provider_response_overrides=overrides)
-            if record_result.get("ok"):
-                result.processed += 1
+            if not record_result.get("ok"):
+                raise _PipelineRecordFailure(record_result["failure"])
+            return record_result
+
+        execution = await BoundedBatchProcessor[Mapping[str, Any] | Any, dict[str, Any]](
+            self.batch_concurrency
+        ).process(records, handle, skip_if=self._is_skipped)
+        result.total = execution.statistics.total
+        result.succeeded = execution.statistics.succeeded
+        result.failed = execution.statistics.failed
+        result.skipped = execution.statistics.skipped
+        result.duration_seconds = execution.statistics.duration_seconds
+        result.processed = result.succeeded
+        for item_result in execution.items:
+            if item_result.skipped:
+                continue
+            if item_result.ok and item_result.value is not None:
+                record_result = item_result.value
                 result.stored += int(record_result.get("stored", 0))
                 result.successes.append(record_result["summary"])
             else:
-                result.failed += 1
-                result.failures.append(record_result["failure"])
+                failure = getattr(item_result.error, "failure", None)
+                result.failures.append(failure or {
+                    "source_url": self._safe_source_url(item_result.item),
+                    "error_type": type(item_result.error).__name__ if item_result.error else "unknown_error",
+                    "message": str(item_result.error) if item_result.error else "Unknown batch failure.",
+                })
 
         return result
+
+    @staticmethod
+    def _is_skipped(item: Mapping[str, Any] | Any) -> bool:
+        return isinstance(item, Mapping) and bool(item.get("skip", False))
+
+    @staticmethod
+    def _safe_source_url(item: Mapping[str, Any] | Any) -> str:
+        if isinstance(item, Mapping):
+            return str(item.get("source_url") or item.get("url") or "")
+        return str(getattr(item, "source_url", ""))
 
     async def process_record(
         self,
