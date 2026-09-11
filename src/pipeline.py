@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 from src.batch import BoundedBatchProcessor
 from src.config.settings import load_settings
 from src.entity_resolution import EntityResolver
+from src.entity_resolution.models import EntityMappingLog, ResolutionResult
 from src.llm import LLMExtractor
+from src.models.schemas import EntityResolutionMetadata
 from src.storage.repository import SQLiteRecordRepository
 
 
@@ -136,7 +138,10 @@ class PipelineOrchestrator:
 
         persisted_records: list[Any] = []
         for record in extraction.records:
-            self._resolve_record_identity(record, source_url=source_url)
+            resolution = self._resolve_record_identity(record, source_url=source_url)
+            if resolution is not None:
+                self._attach_resolution_metadata(record, resolution, source_url=source_url)
+                self.repository.upsert_mapping_log(self.entity_resolver.build_mapping_log(resolution, source_url=source_url))
             self.repository.upsert_record(record)
             persisted_records.append(record)
 
@@ -170,25 +175,39 @@ class PipelineOrchestrator:
 
         raise ValueError("Unsupported pipeline input type; expected a mapping or object with source_url/raw_text.")
 
-    def _resolve_record_identity(self, record: Any, *, source_url: str) -> dict[str, Any]:
+    def _resolve_record_identity(self, record: Any, *, source_url: str) -> ResolutionResult | None:
         if not hasattr(record, "recordType"):
-            return {}
+            return None
 
         content = getattr(record, "content", None)
         if content is None:
-            return {}
+            return None
 
         name = None
         if getattr(record, "recordType", None) == "STARTUP":
             name = getattr(content, "entityName", None)
             if name:
-                self.entity_resolver.resolve_startup(str(name), source_url=source_url)
+                return self.entity_resolver.resolve_startup(str(name), source_url=source_url)
         elif getattr(record, "recordType", None) == "PRODUCT":
             name = getattr(content, "startupName", None)
             if name:
-                self.entity_resolver.resolve_product(str(name), source_url=source_url)
+                return self.entity_resolver.resolve_product(str(name), source_url=source_url)
 
-        return {"recordType": record.recordType, "name": name}
+        return None
+
+    @staticmethod
+    def _attach_resolution_metadata(record: Any, resolution: ResolutionResult, *, source_url: str) -> None:
+        content = getattr(record, "content", None)
+        if content is None or not hasattr(content, "entityResolution"):
+            return
+        content.entityResolution = EntityResolutionMetadata(
+            original_name=resolution.original_name,
+            normalized_name=resolution.normalized_name,
+            canonical_name=resolution.canonical_name,
+            match_type=resolution.match_type,
+            reason=resolution.reason,
+            source_url=source_url,
+        )
 
 
 class _StaticResponseProvider:

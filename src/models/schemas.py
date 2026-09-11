@@ -13,11 +13,21 @@ class SourceInfo(BaseModel):
     url: HttpUrl
 
 
+class EntityResolutionMetadata(BaseModel):
+    original_name: str
+    normalized_name: str
+    canonical_name: str | None = None
+    match_type: Literal["exact_canonical", "exact_alias", "unresolved"] = "unresolved"
+    reason: str = ""
+    source_url: str | None = None
+
+
 class StartupContent(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     entityName: str = Field(..., min_length=1)
     employeeCount: int | None = Field(default=None, ge=0)
+    entityResolution: EntityResolutionMetadata | None = None
 
 
 class ProductContent(BaseModel):
@@ -25,6 +35,7 @@ class ProductContent(BaseModel):
 
     startupName: str = Field(..., min_length=1)
     pricingModel: str | None = Field(default=None, min_length=1)
+    entityResolution: EntityResolutionMetadata | None = None
 
 
 class ResearchPaperContent(BaseModel):
@@ -100,6 +111,7 @@ class NewsRecord(BaseRecord):
 
 __all__ = [
     "BaseRecord",
+    "EntityResolutionMetadata",
     "JobContent",
     "JobRecord",
     "NewsContent",

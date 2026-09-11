@@ -17,6 +17,7 @@ from src.models.schemas import (
     ResearchPaperRecord,
     StartupRecord,
 )
+from src.entity_resolution.models import EntityMappingLog
 
 RECORD_MODELS = {
     "STARTUP": StartupRecord,
@@ -104,6 +105,25 @@ class SQLiteRecordRepository:
         )
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_canonical_records_source_url ON canonical_records(source_url_normalized)"
+        )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entity_mapping_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL,
+                canonical_name TEXT,
+                canonical_name_key TEXT NOT NULL,
+                match_type TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                source_url TEXT,
+                source_url_normalized TEXT NOT NULL,
+                UNIQUE(original_name, normalized_name, canonical_name_key, match_type, source_url_normalized)
+            )
+            """
+        )
+        self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_mapping_logs_source_url ON entity_mapping_logs(source_url_normalized)"
         )
         self._connection.commit()
 
@@ -339,6 +359,48 @@ class SQLiteRecordRepository:
             "SELECT COUNT(*) AS count FROM canonical_records WHERE entity_type = ?",
             (entity_type,),
         ).fetchone()
+        return int(row["count"] if row else 0)
+
+    def upsert_mapping_log(self, mapping: EntityMappingLog) -> EntityMappingLog:
+        source_url = str(mapping.source_url) if mapping.source_url else None
+        source_url_normalized = normalize_source_url(source_url)
+        self._connection.execute(
+            """
+            INSERT INTO entity_mapping_logs (
+                original_name, normalized_name, canonical_name, canonical_name_key, match_type,
+                reason, source_url, source_url_normalized
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(original_name, normalized_name, canonical_name_key, match_type, source_url_normalized)
+            DO UPDATE SET reason = excluded.reason, source_url = excluded.source_url
+            """,
+            (
+                mapping.original_name,
+                mapping.normalized_name,
+                mapping.canonical_name,
+                mapping.canonical_name or "",
+                mapping.match_type,
+                mapping.reason,
+                source_url,
+                source_url_normalized,
+            ),
+        )
+        self._connection.commit()
+        return mapping
+
+    def get_mapping_logs(self, *, source_url: str | None = None) -> list[EntityMappingLog]:
+        if source_url is None:
+            rows = self._connection.execute(
+                "SELECT original_name, normalized_name, canonical_name, match_type, reason, source_url FROM entity_mapping_logs ORDER BY id ASC"
+            ).fetchall()
+        else:
+            rows = self._connection.execute(
+                "SELECT original_name, normalized_name, canonical_name, match_type, reason, source_url FROM entity_mapping_logs WHERE source_url_normalized = ? ORDER BY id ASC",
+                (normalize_source_url(source_url),),
+            ).fetchall()
+        return [EntityMappingLog.model_validate(dict(row)) for row in rows]
+
+    def count_mapping_logs(self) -> int:
+        row = self._connection.execute("SELECT COUNT(*) AS count FROM entity_mapping_logs").fetchone()
         return int(row["count"] if row else 0)
 
     @staticmethod
