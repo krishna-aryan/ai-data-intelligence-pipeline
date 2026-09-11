@@ -30,6 +30,7 @@ class Settings:
     database_path: str | None = None
     redis_url: str | None = None
     google_sheets_credentials: str | None = None
+    google_sheets_spreadsheet_id: str | None = None
 
 
 _DEFAULTS: Final[dict[str, object]] = {
@@ -90,4 +91,5 @@ def load_settings() -> Settings:
         database_path=os.getenv("DATABASE_PATH") or os.getenv("DATABASE_URL"),
         redis_url=os.getenv("REDIS_URL"),
         google_sheets_credentials=os.getenv("GOOGLE_SHEETS_CREDENTIALS"),
+        google_sheets_spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID"),
     )

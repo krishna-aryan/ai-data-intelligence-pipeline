@@ -27,6 +27,14 @@ The pipeline uses [src/batch.py](src/batch.py) as a reusable asynchronous batch 
 
 This is a local bounded-concurrency design rather than distributed infrastructure. To move toward hundreds of thousands of records later, a durable work queue and partitioned workers could feed the same batch and pipeline contracts, while source-specific crawlers could reuse long-lived sessions and bounded batches. SQLite can remain useful for local development and validation; a later storage adapter could replace it behind the existing repository contract without changing provenance, result aggregation, or failure isolation.
 
+## Google Sheets export
+
+The dedicated exporter in [src/integrations/google_sheets.py](src/integrations/google_sheets.py) reads persisted records only through `SQLiteRecordRepository`. It writes deterministic snapshots to `Startups`, `Products`, `Research Papers`, `Jobs`, `News`, and `Entity Mapping Log`. Each worksheet is created when needed and replaced as a complete header-plus-rows snapshot, so repeated exports do not duplicate rows and empty datasets remain valid header-only worksheets.
+
+The exporter uses an injectable `GoogleSheetsClient` interface, so offline tests do not contact Google. Rows preserve source URLs, source names, collected dates, applicable freshness fields, and entity-resolution metadata. Rows and columns have fixed ordering, and mapping-log rows are sorted deterministically. Authentication, configuration, API, and export failures use structured exceptions without including credential contents in error messages.
+
+Configure `GOOGLE_SHEETS_SPREADSHEET_ID` and `GOOGLE_SHEETS_CREDENTIALS` locally when a real client integration is added. The current export layer deliberately does not create a Google client or require credentials; the environment values are placeholders only.
+
 ## Current implementation status
 
 This is an incremental implementation. The project now includes a reusable asynchronous crawling foundation, but it does not yet crawl production sources at scale, call LLM providers, resolve entities, or export to Google Sheets.
