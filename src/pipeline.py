@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from src.config.settings import load_settings
 from src.entity_resolution import EntityResolver
-from src.entity_resolution.models import EntityMappingLog, ResolutionResult
+from src.entity_resolution.models import ResolutionResult
 from src.llm import LLMExtractor
 from src.models.schemas import EntityResolutionMetadata
 from src.storage.repository import SQLiteRecordRepository
@@ -21,10 +21,14 @@ class _NullLLMProvider:
         raise RuntimeError("No LLM provider configured for pipeline processing.")
 
 
-class _PipelineRecordFailure(Exception):
+class _PipelineRecordFailure(JobExecutionError):
     def __init__(self, failure: dict[str, Any]) -> None:
         self.failure = failure
-        super().__init__(failure.get("message", "Pipeline record failed."))
+        super().__init__(
+            failure.get("message", "Pipeline record failed."),
+            category=failure.get("error_type", "pipeline_failure"),
+            details=failure,
+        )
 
 
 class _RetryablePipelineFailure(JobExecutionError):
@@ -126,7 +130,7 @@ class PipelineOrchestrator:
                 result.resolved += int(summary.get("resolved", 0))
                 result.unresolved += int(summary.get("unresolved", 0))
             else:
-                failure = getattr(item_result.job.payload, "failure", None)
+                failure = item_result.error_details
                 result.failures.append(failure or {
                     "source_url": item_result.job.source_url,
                     "error_type": item_result.error_category or "unknown_error",

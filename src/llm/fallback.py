@@ -155,8 +155,6 @@ class FallbackOrchestrator:
         if status_code == 401 or "api key" in message.lower() or "authentication" in message.lower():
             error_type = "invalid_authentication"
             retryable = False
-        elif error_type == "unknown_provider_error" and not retryable:
-            retryable = True
         return ProviderRequestError(
             provider_name=provider_name, error_type=error_type, retryable=retryable,
             message=message, status_code=status_code

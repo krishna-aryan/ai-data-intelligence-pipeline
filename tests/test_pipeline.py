@@ -80,3 +80,22 @@ async def test_pipeline_orchestrator_isolates_failures_per_record(tmp_path: Path
     assert result.stored == 1
     assert len(repo.get_by_type("PRODUCT")) == 1
     assert len(result.failures) == 1
+
+
+@pytest.mark.asyncio
+async def test_pipeline_preserves_structured_extraction_failure(tmp_path: Path):
+    repo = SQLiteRecordRepository(tmp_path / "pipeline.sqlite3")
+
+    class EmptyProvider:
+        async def generate(self, prompt: str) -> str:
+            return ""
+
+    orchestrator = PipelineOrchestrator(repo, llm_provider=EmptyProvider(), batch_concurrency=1)
+    result = await orchestrator.process_batch(
+        [{"source_url": "https://example.com/empty", "raw_text": "content"}]
+    )
+
+    assert result.failed == 1
+    assert result.failures[0]["source_url"] == "https://example.com/empty"
+    assert result.failures[0]["error_type"] == "empty_response"
+    assert "Provider returned an empty response" in result.failures[0]["message"]

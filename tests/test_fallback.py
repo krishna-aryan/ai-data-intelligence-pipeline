@@ -142,7 +142,10 @@ async def test_invalid_authentication_is_not_retried():
 
 @pytest.mark.asyncio
 async def test_groq_success_after_gemini_failure():
-    gemini = FakeProvider("gemini", error=RuntimeError("provider down"))
+    gemini = FakeProvider("gemini", error=ProviderRequestError(
+        provider_name="gemini", error_type="temporary_server_error", retryable=True,
+        message="provider down", status_code=503,
+    ))
     groq = FakeProvider("groq", response='{"ok": true}')
     orchestrator = FallbackOrchestrator([gemini, groq])
 
@@ -154,8 +157,14 @@ async def test_groq_success_after_gemini_failure():
 
 @pytest.mark.asyncio
 async def test_cerebras_used_after_gemini_and_groq_fail():
-    gemini = FakeProvider("gemini", error=RuntimeError("provider down"))
-    groq = FakeProvider("groq", error=RuntimeError("groq down"))
+    gemini = FakeProvider("gemini", error=ProviderRequestError(
+        provider_name="gemini", error_type="temporary_server_error", retryable=True,
+        message="provider down", status_code=503,
+    ))
+    groq = FakeProvider("groq", error=ProviderRequestError(
+        provider_name="groq", error_type="connection_error", retryable=True,
+        message="groq down",
+    ))
     cerebras = FakeProvider("cerebras", response='{"ok": true}')
     orchestrator = FallbackOrchestrator([gemini, groq, cerebras])
 
@@ -167,9 +176,18 @@ async def test_cerebras_used_after_gemini_and_groq_fail():
 
 @pytest.mark.asyncio
 async def test_all_providers_fail_returns_structured_failure():
-    gemini = FakeProvider("gemini", error=RuntimeError("gemini down"))
-    groq = FakeProvider("groq", error=RuntimeError("groq down"))
-    cerebras = FakeProvider("cerebras", error=RuntimeError("cerebras down"))
+    gemini = FakeProvider("gemini", error=ProviderRequestError(
+        provider_name="gemini", error_type="temporary_server_error", retryable=True,
+        message="gemini down", status_code=503,
+    ))
+    groq = FakeProvider("groq", error=ProviderRequestError(
+        provider_name="groq", error_type="connection_error", retryable=True,
+        message="groq down",
+    ))
+    cerebras = FakeProvider("cerebras", error=ProviderRequestError(
+        provider_name="cerebras", error_type="timeout", retryable=True,
+        message="cerebras down",
+    ))
     orchestrator = FallbackOrchestrator([gemini, groq, cerebras])
 
     with pytest.raises(ProviderFallbackError) as excinfo:
@@ -180,6 +198,20 @@ async def test_all_providers_fail_returns_structured_failure():
     assert err.providers_attempted == ["gemini", "groq", "cerebras"]
     assert len(err.provider_failures) == 3
     assert err.provider_failures[0].provider_name == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_does_not_fall_back():
+    gemini = FakeProvider("gemini", error=RuntimeError("programming error"))
+    groq = FakeProvider("groq", response='{"ok": true}')
+    orchestrator = FallbackOrchestrator([gemini, groq])
+
+    with pytest.raises(ProviderFallbackError) as excinfo:
+        await orchestrator.generate("hello")
+
+    assert excinfo.value.final_status == "non_retryable_error"
+    assert excinfo.value.provider_failures[0].error_type == "unknown_provider_error"
+    assert len(groq.calls) == 0
 
 
 @pytest.mark.asyncio

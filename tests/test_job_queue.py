@@ -53,6 +53,37 @@ async def test_retryable_failure_retries_and_succeeds():
 
 
 @pytest.mark.asyncio
+async def test_full_queue_with_simultaneous_retries_eventually_drains():
+    first_attempts = 0
+    first_attempts_ready = asyncio.Event()
+    release_failures = asyncio.Event()
+
+    async def handle(job):
+        nonlocal first_attempts
+        if job.job_id in {"job-0", "job-1"} and first_attempts < 2:
+            first_attempts += 1
+            if first_attempts == 2:
+                first_attempts_ready.set()
+            await first_attempts_ready.wait()
+            await release_failures.wait()
+            raise JobExecutionError("temporary", category="rate_limited", retryable=True)
+        return job.payload
+
+    async def run_jobs():
+        task = asyncio.create_task(
+            AsyncJobQueueExecutor[int, int](2, queue_size=1).run(make_jobs(4), handle, max_retries=1)
+        )
+        await first_attempts_ready.wait()
+        release_failures.set()
+        return await task
+
+    execution = await asyncio.wait_for(run_jobs(), timeout=2)
+
+    assert all(result.status == "succeeded" for result in execution.results)
+    assert execution.metrics.retried == 2
+
+
+@pytest.mark.asyncio
 async def test_permanent_failure_does_not_stop_other_jobs():
     async def handle(job):
         if job.payload == 1:

@@ -21,7 +21,7 @@ The project is intentionally layered to keep responsibilities separated:
 
 ## Batch concurrency and scaling
 
-The pipeline uses [src/batch.py](src/batch.py) as a reusable asynchronous batch boundary. `BoundedBatchProcessor` runs a fixed number of workers, applies an `asyncio.Semaphore`, and uses a bounded queue so a large iterable does not create one task per record. Results retain input order and expose deterministic counts for `total`, `succeeded`, `failed`, `skipped`, and elapsed duration.
+The pipeline uses [src/job_queue.py](src/job_queue.py) as a reusable asynchronous job boundary. `AsyncJobQueueExecutor` runs a fixed number of workers with a bounded `asyncio.Queue`, a separate retry dispatcher, and explicit draining so a large batch does not create one task per record. Results retain trace metadata and expose deterministic counts for `queued`, `started`, `succeeded`, `failed`, `retried`, `skipped`, `cancelled`, and elapsed duration. [src/batch.py](src/batch.py) remains available as a lower-level bounded batch utility for callers that need item-oriented processing.
 
 `PipelineOrchestrator.process_batch(...)` uses this layer with `BATCH_CONCURRENCY` from the environment (default `8`), or an explicit `batch_concurrency` constructor value. A mapping with `skip=True` is counted as skipped; handler exceptions and extraction failures are isolated to that input and do not cancel the rest of the batch. The existing crawler remains responsible for reusing one `aiohttp.ClientSession` per fetch batch, its semaphore, and its retry/backoff policy. LLM chunk-level concurrency and provider fallback remain unchanged, and SQLite remains the persistence backend.
 
@@ -49,7 +49,7 @@ For live export, enable the Google Sheets API in a Google Cloud project, create 
 
 ## Current implementation status
 
-This is an incremental implementation. The project now includes a reusable asynchronous crawling foundation, but it does not yet crawl production sources at scale, call LLM providers, resolve entities, or export to Google Sheets.
+This is an incremental implementation. The current local pipeline includes asynchronous source crawling, freshness filtering, structured LLM extraction with Gemini/Groq/Cerebras fallback, deterministic entity resolution, SQLite persistence, bounded queue processing, GitHub enrichment, and deterministic Google Sheets export boundaries. External production-scale deployment and live provider/export validation remain environment-dependent.
 
 Implemented so far:
 
@@ -57,10 +57,10 @@ Implemented so far:
 - Environment-based configuration system
 - Pydantic data models for the required record types
 - Reusable async HTTP crawler foundation
-- Local test coverage for success, HTTP failures, request exceptions, concurrency, and session cleanup
-- README and project metadata scaffolding
+- Local test coverage for crawling, retries, extraction, resolution, persistence, queue processing, exports, and end-to-end integration
+- Production-oriented local scaling and export documentation
 
-Planned modules and future work:
+Future considerations:
 
 - src/crawlers/
 - src/extractors/
@@ -70,12 +70,8 @@ Planned modules and future work:
 - src/storage/
 - src/models/
 - src/utils/
-- asynchronous crawling and batching
-- LLM retry and backoff handling
-- chunking for oversized payloads
-- deduplication and entity normalization
-- date normalization and freshness rules
-- export to Google Sheets
+- distributed queue/database deployment for larger workloads
+- live operational monitoring and provider/export credentials
 
 ## Freshness tracking and publication-date normalization
 
@@ -236,7 +232,7 @@ Pydantic validation
       ↓
 canonical project schema
 
-This stack intentionally keeps one provider abstraction and one extractor layer, while validating every extracted record against the existing canonical schemas in [src/models/schemas.py](src/models/schemas.py). The current implementation supports Gemini as the first provider, and later steps will add provider fallback, chunking, and broader enrichment.
+This stack intentionally keeps one provider abstraction and one extractor layer, while validating every extracted record against the existing canonical schemas in [src/models/schemas.py](src/models/schemas.py). The current implementation supports the Gemini → Groq → Cerebras fallback chain, deterministic chunking, and the existing enrichment boundaries.
 
 The extractor receives the source URL and raw text together, preserves the source URL on every record, and rejects malformed or hallucinated output before it becomes part of the canonical pipeline.
 
@@ -345,7 +341,7 @@ asyncio.run(main())
 
 ## Current implementation status
 
-This step only establishes a deterministic research-paper ingestion foundation. It does not yet collect 1,000+ papers, does not yet enrich GitHub metadata from the GitHub API, and does not yet implement LLM extraction or other dataset types.
+This section establishes the deterministic research-paper ingestion foundation. It does not claim to collect 1,000+ papers in one run; GitHub enrichment remains optional, and the broader LLM pipeline is documented separately above.
 
 ## Local setup
 
