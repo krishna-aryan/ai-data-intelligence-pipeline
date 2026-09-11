@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -36,6 +38,18 @@ class SheetsAuthenticationError(SheetsExportError):
     pass
 
 
+class SheetsPermissionError(SheetsExportError):
+    pass
+
+
+class SheetsSpreadsheetNotFoundError(SheetsExportError):
+    pass
+
+
+class SheetsWorksheetError(SheetsExportError):
+    pass
+
+
 class SheetsAPIError(SheetsExportError):
     pass
 
@@ -58,6 +72,95 @@ class GoogleSheetsExportResult:
     @property
     def total_rows(self) -> int:
         return sum(item.row_count for item in self.worksheets)
+
+
+class GoogleSheetsAPIClient:
+    """Official Google Sheets API adapter implementing GoogleSheetsClient."""
+
+    _SCOPES = ("https://www.googleapis.com/auth/spreadsheets",)
+
+    def __init__(self, service: Any) -> None:
+        self._service = service
+
+    @classmethod
+    def from_credentials(cls, credentials_value: str | None) -> "GoogleSheetsAPIClient":
+        if not credentials_value or not credentials_value.strip():
+            raise SheetsConfigurationError("GOOGLE_SHEETS_CREDENTIALS is required.")
+        try:
+            from google.oauth2 import service_account
+            from googleapiclient.discovery import build
+        except ImportError as exc:
+            raise SheetsConfigurationError(
+                "Google Sheets dependencies are not installed. Install google-auth and google-api-python-client."
+            ) from exc
+
+        value = credentials_value.strip()
+        try:
+            path = Path(value)
+            if path.is_file():
+                credentials = service_account.Credentials.from_service_account_file(
+                    str(path), scopes=cls._SCOPES
+                )
+            else:
+                credentials_info = json.loads(value)
+                if not isinstance(credentials_info, dict):
+                    raise ValueError("Credential JSON must be an object.")
+                credentials = service_account.Credentials.from_service_account_info(
+                    credentials_info, scopes=cls._SCOPES
+                )
+            return cls(build("sheets", "v4", credentials=credentials, cache_discovery=False))
+        except SheetsExportError:
+            raise
+        except (OSError, ValueError, TypeError) as exc:
+            raise SheetsAuthenticationError("Google Sheets credentials could not be loaded.") from exc
+        except Exception as exc:
+            raise SheetsAuthenticationError("Google Sheets authentication failed.") from exc
+
+    def ensure_worksheet(self, spreadsheet_id: str, worksheet_name: str) -> None:
+        try:
+            response = self._service.spreadsheets().get(
+                spreadsheetId=spreadsheet_id, fields="sheets.properties.title"
+            ).execute()
+            titles = {
+                sheet.get("properties", {}).get("title")
+                for sheet in response.get("sheets", [])
+            }
+            if worksheet_name in titles:
+                return
+            self._service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [{"addSheet": {"properties": {"title": worksheet_name}}}]},
+            ).execute()
+        except Exception as exc:
+            raise self._map_api_error(exc, worksheet_name=worksheet_name) from exc
+
+    def replace_values(self, spreadsheet_id: str, worksheet_name: str, values: list[list[Any]]) -> None:
+        range_name = f"'{worksheet_name}'!A:ZZ"
+        try:
+            self._service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id, range=range_name, body={}
+            ).execute()
+            self._service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"'{worksheet_name}'!A1",
+                valueInputOption="RAW",
+                body={"values": values},
+            ).execute()
+        except Exception as exc:
+            raise self._map_api_error(exc, worksheet_name=worksheet_name) from exc
+
+    @staticmethod
+    def _map_api_error(error: Exception, *, worksheet_name: str) -> SheetsExportError:
+        status = getattr(getattr(error, "resp", None), "status", None)
+        if status in {401, 403}:
+            if status == 401:
+                return SheetsAuthenticationError("Google Sheets authentication failed.")
+            return SheetsPermissionError("Google Sheets permission denied.")
+        if status == 404:
+            return SheetsSpreadsheetNotFoundError("Google Sheets spreadsheet was not found.")
+        if status == 400 or isinstance(error, (KeyError, ValueError)):
+            return SheetsWorksheetError(f"Google Sheets worksheet operation failed for {worksheet_name}.")
+        return SheetsAPIError(f"Google Sheets API request failed for {worksheet_name}.")
 
 
 class GoogleSheetsExporter:
@@ -207,6 +310,10 @@ __all__ = [
     "SheetsConfigurationError",
     "SheetsDataError",
     "SheetsExportError",
+    "SheetsPermissionError",
+    "SheetsSpreadsheetNotFoundError",
+    "SheetsWorksheetError",
+    "GoogleSheetsAPIClient",
     "WORKSHEET_NAMES",
     "WorksheetExportResult",
 ]

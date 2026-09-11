@@ -1,5 +1,6 @@
 from .google_sheets import (
     GoogleSheetsClient,
+    GoogleSheetsAPIClient,
     GoogleSheetsExportResult,
     GoogleSheetsExporter,
     SheetsAPIError,
@@ -7,12 +8,16 @@ from .google_sheets import (
     SheetsConfigurationError,
     SheetsDataError,
     SheetsExportError,
+    SheetsPermissionError,
+    SheetsSpreadsheetNotFoundError,
+    SheetsWorksheetError,
     WORKSHEET_NAMES,
     WorksheetExportResult,
 )
 
 __all__ = [
     "GoogleSheetsClient",
+    "GoogleSheetsAPIClient",
     "GoogleSheetsExportResult",
     "GoogleSheetsExporter",
     "SheetsAPIError",
@@ -20,6 +25,9 @@ __all__ = [
     "SheetsConfigurationError",
     "SheetsDataError",
     "SheetsExportError",
+    "SheetsPermissionError",
+    "SheetsSpreadsheetNotFoundError",
+    "SheetsWorksheetError",
     "WORKSHEET_NAMES",
     "WorksheetExportResult",
 ]

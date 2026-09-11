@@ -35,6 +35,8 @@ The exporter uses an injectable `GoogleSheetsClient` interface, so offline tests
 
 Configure `GOOGLE_SHEETS_SPREADSHEET_ID` and `GOOGLE_SHEETS_CREDENTIALS` locally when a real client integration is added. The current export layer deliberately does not create a Google client or require credentials; the environment values are placeholders only.
 
+For live export, enable the Google Sheets API in a Google Cloud project, create a service-account JSON credential, and share the target spreadsheet with that service account's email address. Set `GOOGLE_SHEETS_CREDENTIALS` to either the protected JSON file path or the JSON configuration string, and set `GOOGLE_SHEETS_SPREADSHEET_ID` to the target spreadsheet ID. Never commit `.env`, service-account JSON, tokens, private keys, or credential contents. The live test is marked `live` and skips automatically when configuration is absent; normal tests never contact Google.
+
 ## Current implementation status
 
 This is an incremental implementation. The project now includes a reusable asynchronous crawling foundation, but it does not yet crawl production sources at scale, call LLM providers, resolve entities, or export to Google Sheets.
@@ -368,6 +370,7 @@ Planned future variables:
 - DATABASE_URL
 - REDIS_URL
 - GOOGLE_SHEETS_CREDENTIALS
+- GOOGLE_SHEETS_SPREADSHEET_ID
 
 ## Running tests
 
@@ -412,6 +415,7 @@ Planned future variables:
 - DATABASE_URL
 - REDIS_URL
 - GOOGLE_SHEETS_CREDENTIALS
+- GOOGLE_SHEETS_SPREADSHEET_ID
 
 ## Running tests
 
