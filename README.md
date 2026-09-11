@@ -76,6 +76,23 @@ The adapter reuses the existing asynchronous HTTP crawler and the Step 10 freshn
 
 The default freshness rule is `age <= 24 hours => fresh`, while missing values, malformed values, future dates, and stale items are excluded rather than guessed. Unknown dates remain `unknown` and are never treated as fresh. URL deduplication is deterministic and conservative: same normalized source URL is kept once, while different URLs remain separate. Public source limitations include that the adapter intentionally supports a feed-based ingestion pattern rather than all possible News sites or arbitrary HTML pages.
 
+## Job ingestion foundation
+
+This project includes a conservative Job ingestion adapter under [src/crawlers/jobs.py](src/crawlers/jobs.py). The selected public structured source is a simple RSS/Atom-like public job feed format that exposes stable job metadata: `title`, `link`, `pubDate`, and optional fields such as `source`, `description`, `location`, and `employmentType`. This is intentionally narrow and deterministic: it avoids arbitrary HTML scraping, anti-bot workarounds, and any authentication requirement.
+
+The adapter reuses the existing asynchronous HTTP crawler from [src/crawlers/http_client.py](src/crawlers/http_client.py) and the Step 10 date/freshness layer from [src/freshness](src/freshness). The pipeline is:
+
+1. fetch job feed via the async crawler
+2. parse public RSS job items
+3. preserve the original source URL from the source feed
+4. normalize `pubDate` using `parse_publication_date(...)`
+5. evaluate freshness with `evaluate_freshness(...)`
+6. keep `fresh`, `stale`, `unknown`, and `future` states distinct for downstream auditing
+
+The default freshness window remains 24 hours. A job exactly 24 hours old remains `fresh`, while anything older than that is `stale`. Missing or malformed posting dates stay `unknown` and are not guessed. A future posting date remains `future` and is excluded from fresh results. The implementation keeps provenance honest: it never fabricates a job URL, title, company, date, or location, and it preserves `None` where the source does not provide a value.
+
+Deduplication is deterministic and conservative: repeated source URLs are collapsed by their normalized URL, while different URLs are kept separate. The implementation is testable offline and does not claim coverage of all job boards or production-scale monitoring. It intentionally does not implement Redis, database persistence, distributed crawling, browser automation, or generalized scraping of non-public job sites.
+
 ## LLM extraction foundation
 
 The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
