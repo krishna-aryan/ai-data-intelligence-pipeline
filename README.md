@@ -27,6 +27,12 @@ The pipeline uses [src/batch.py](src/batch.py) as a reusable asynchronous batch 
 
 This is a local bounded-concurrency design rather than distributed infrastructure. To move toward hundreds of thousands of records later, a durable work queue and partitioned workers could feed the same batch and pipeline contracts, while source-specific crawlers could reuse long-lived sessions and bounded batches. SQLite can remain useful for local development and validation; a later storage adapter could replace it behind the existing repository contract without changing provenance, result aggregation, or failure isolation.
 
+## Scaling to 500k+ records
+
+The current [src/job_queue.py](src/job_queue.py) provides a transport-independent `PipelineJob` and `JobResult` contract backed by a bounded in-process `asyncio.Queue` and fixed worker set. `QUEUE_CONCURRENCY` and `QUEUE_MAX_RETRIES` control local throughput and retry behavior. Backpressure comes from the bounded queue, while crawler sessions, LLM chunk limits, and the existing batch boundary keep downstream work bounded. Failed jobs are isolated, retryable failures are retried up to the configured limit, and shutdown drains queued work before workers are cancelled.
+
+For larger deployments, the same job payload and result metadata could be carried by Redis, Kafka, or Celery workers without changing crawler, extraction, entity-resolution, or persistence code. Work would be partitioned by source, entity type, or stable job key and processed in bounded batches. Rate limits could be enforced at each worker or partition, and backpressure would be maintained at the queue boundary. SQLite would be replaced by a persistent production database behind the repository contract. Source URLs, stable job IDs, deterministic upserts, and exported mapping metadata would preserve provenance and idempotency across retries and horizontally scaled workers.
+
 ## Google Sheets export
 
 The dedicated exporter in [src/integrations/google_sheets.py](src/integrations/google_sheets.py) reads persisted records only through `SQLiteRecordRepository`. It writes deterministic snapshots to `Startups`, `Products`, `Research Papers`, `Jobs`, `News`, and `Entity Mapping Log`. Each worksheet is created when needed and replaced as a complete header-plus-rows snapshot, so repeated exports do not duplicate rows and empty datasets remain valid header-only worksheets.

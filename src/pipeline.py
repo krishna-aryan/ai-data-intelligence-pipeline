@@ -5,13 +5,13 @@ from typing import Any, Iterable, Mapping
 
 from pydantic import BaseModel, Field
 
-from src.batch import BoundedBatchProcessor
 from src.config.settings import load_settings
 from src.entity_resolution import EntityResolver
 from src.entity_resolution.models import EntityMappingLog, ResolutionResult
 from src.llm import LLMExtractor
 from src.models.schemas import EntityResolutionMetadata
 from src.storage.repository import SQLiteRecordRepository
+from src.job_queue import AsyncJobQueueExecutor, JobExecutionError, PipelineJob
 
 
 class _NullLLMProvider:
@@ -27,6 +27,10 @@ class _PipelineRecordFailure(Exception):
         super().__init__(failure.get("message", "Pipeline record failed."))
 
 
+class _RetryablePipelineFailure(JobExecutionError):
+    pass
+
+
 class PipelineBatchResult(BaseModel):
     total: int = 0
     processed: int = 0
@@ -34,6 +38,10 @@ class PipelineBatchResult(BaseModel):
     failed: int = 0
     succeeded: int = 0
     skipped: int = 0
+    queued: int = 0
+    started: int = 0
+    retried: int = 0
+    cancelled: int = 0
     duration_seconds: float = 0.0
     successes: list[dict[str, Any]] = Field(default_factory=list)
     failures: list[dict[str, Any]] = Field(default_factory=list)
@@ -57,6 +65,8 @@ class PipelineOrchestrator:
         self.entity_resolver = entity_resolver or EntityResolver()
         self.extractor = extractor or LLMExtractor(self.llm_provider)
         self.batch_concurrency = batch_concurrency if batch_concurrency is not None else load_settings().batch_concurrency
+        settings = load_settings()
+        self.queue_max_retries = settings.queue_max_retries
 
     async def process_batch(
         self,
@@ -67,34 +77,49 @@ class PipelineOrchestrator:
         result = PipelineBatchResult(total=0, processed=0, stored=0, failed=0)
         overrides = provider_response_overrides or {}
 
-        async def handle(item: Mapping[str, Any] | Any) -> dict[str, Any]:
-            record_result = await self.process_record(item, provider_response_overrides=overrides)
+        job_items = list(records)
+        jobs = [
+            PipelineJob.create(
+                source_url=self._safe_source_url(item),
+                entity_type=self._safe_entity_type(item),
+                payload=item,
+            )
+            for item in job_items
+        ]
+
+        async def handle(job: PipelineJob[Mapping[str, Any] | Any]) -> dict[str, Any]:
+            record_result = await self.process_record(job.payload, provider_response_overrides=overrides)
             if not record_result.get("ok"):
-                raise _PipelineRecordFailure(record_result["failure"])
+                failure = record_result["failure"]
+                raise _PipelineRecordFailure(failure)
             return record_result
 
-        execution = await BoundedBatchProcessor[Mapping[str, Any] | Any, dict[str, Any]](
+        execution = await AsyncJobQueueExecutor[Mapping[str, Any] | Any, dict[str, Any]](
             self.batch_concurrency
-        ).process(records, handle, skip_if=self._is_skipped)
-        result.total = execution.statistics.total
-        result.succeeded = execution.statistics.succeeded
-        result.failed = execution.statistics.failed
-        result.skipped = execution.statistics.skipped
-        result.duration_seconds = execution.statistics.duration_seconds
+        ).run(jobs, handle, max_retries=self.queue_max_retries, skip_if=self._is_skipped_job)
+        result.total = execution.metrics.queued
+        result.succeeded = execution.metrics.succeeded
+        result.failed = execution.metrics.failed
+        result.skipped = execution.metrics.skipped
+        result.queued = execution.metrics.queued
+        result.started = execution.metrics.started
+        result.retried = execution.metrics.retried
+        result.cancelled = execution.metrics.cancelled
+        result.duration_seconds = execution.metrics.duration_seconds
         result.processed = result.succeeded
-        for item_result in execution.items:
-            if item_result.skipped:
+        for item_result in execution.results:
+            if item_result.status == "skipped":
                 continue
-            if item_result.ok and item_result.value is not None:
+            if item_result.status == "succeeded" and item_result.value is not None:
                 record_result = item_result.value
                 result.stored += int(record_result.get("stored", 0))
                 result.successes.append(record_result["summary"])
             else:
-                failure = getattr(item_result.error, "failure", None)
+                failure = getattr(item_result.job.payload, "failure", None)
                 result.failures.append(failure or {
-                    "source_url": self._safe_source_url(item_result.item),
-                    "error_type": type(item_result.error).__name__ if item_result.error else "unknown_error",
-                    "message": str(item_result.error) if item_result.error else "Unknown batch failure.",
+                    "source_url": item_result.job.source_url,
+                    "error_type": item_result.error_category or "unknown_error",
+                    "message": item_result.error_message or "Unknown batch failure.",
                 })
 
         return result
@@ -102,6 +127,16 @@ class PipelineOrchestrator:
     @staticmethod
     def _is_skipped(item: Mapping[str, Any] | Any) -> bool:
         return isinstance(item, Mapping) and bool(item.get("skip", False))
+
+    @staticmethod
+    def _is_skipped_job(job: PipelineJob[Mapping[str, Any] | Any]) -> bool:
+        return PipelineOrchestrator._is_skipped(job.payload)
+
+    @staticmethod
+    def _safe_entity_type(item: Mapping[str, Any] | Any) -> str:
+        if isinstance(item, Mapping):
+            return str(item.get("entity_type") or item.get("record_type") or "UNKNOWN")
+        return str(getattr(item, "entity_type", "UNKNOWN"))
 
     @staticmethod
     def _safe_source_url(item: Mapping[str, Any] | Any) -> str:

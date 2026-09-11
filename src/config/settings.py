@@ -14,6 +14,8 @@ class Settings:
     log_level: str = "INFO"
     max_concurrency: int = 8
     batch_concurrency: int = 8
+    queue_concurrency: int = 8
+    queue_max_retries: int = 0
     llm_provider: str = "gemini"
     llm_model: str = "gemini-1.5-flash"
     llm_timeout: int = 30
@@ -39,6 +41,8 @@ _DEFAULTS: Final[dict[str, object]] = {
     "LOG_LEVEL": "INFO",
     "MAX_CONCURRENCY": 8,
     "BATCH_CONCURRENCY": 8,
+    "QUEUE_CONCURRENCY": 8,
+    "QUEUE_MAX_RETRIES": 0,
     "LLM_PROVIDER": "gemini",
     "LLM_MODEL": "gemini-1.5-flash",
     "GEMINI_MODEL": "gemini-1.5-flash",
@@ -58,6 +62,8 @@ def load_settings() -> Settings:
     log_level = os.getenv("LOG_LEVEL", str(_DEFAULTS["LOG_LEVEL"]))
     max_concurrency = int(os.getenv("MAX_CONCURRENCY", str(_DEFAULTS["MAX_CONCURRENCY"])))
     batch_concurrency = int(os.getenv("BATCH_CONCURRENCY", str(_DEFAULTS["BATCH_CONCURRENCY"])))
+    queue_concurrency = int(os.getenv("QUEUE_CONCURRENCY", str(_DEFAULTS["QUEUE_CONCURRENCY"])))
+    queue_max_retries = int(os.getenv("QUEUE_MAX_RETRIES", str(_DEFAULTS["QUEUE_MAX_RETRIES"])))
     llm_provider = os.getenv("LLM_PROVIDER", str(_DEFAULTS["LLM_PROVIDER"]))
     llm_model = os.getenv("LLM_MODEL", str(_DEFAULTS["LLM_MODEL"]))
     gemini_model = os.getenv("GEMINI_MODEL", str(_DEFAULTS["GEMINI_MODEL"]))
@@ -75,6 +81,8 @@ def load_settings() -> Settings:
         log_level=log_level,
         max_concurrency=max_concurrency,
         batch_concurrency=batch_concurrency,
+        queue_concurrency=queue_concurrency,
+        queue_max_retries=queue_max_retries,
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_timeout=llm_timeout,
