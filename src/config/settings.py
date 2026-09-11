@@ -26,6 +26,7 @@ class Settings:
     deepseek_api_key: str | None = None
     github_token: str | None = None
     database_url: str | None = None
+    database_path: str | None = None
     redis_url: str | None = None
     google_sheets_credentials: str | None = None
 
@@ -82,6 +83,7 @@ def load_settings() -> Settings:
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
         github_token=os.getenv("GITHUB_TOKEN"),
         database_url=os.getenv("DATABASE_URL"),
+        database_path=os.getenv("DATABASE_PATH") or os.getenv("DATABASE_URL"),
         redis_url=os.getenv("REDIS_URL"),
         google_sheets_credentials=os.getenv("GOOGLE_SHEETS_CREDENTIALS"),
     )

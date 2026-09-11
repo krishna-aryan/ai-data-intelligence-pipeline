@@ -93,6 +93,47 @@ The default freshness window remains 24 hours. A job exactly 24 hours old remain
 
 Deduplication is deterministic and conservative: repeated source URLs are collapsed by their normalized URL, while different URLs are kept separate. The implementation is testable offline and does not claim coverage of all job boards or production-scale monitoring. It intentionally does not implement Redis, database persistence, distributed crawling, browser automation, or generalized scraping of non-public job sites.
 
+## SQLite persistence architecture
+
+The project now includes a deterministic local persistence layer under [src/storage](src/storage). It uses SQLite as the initial durable store and keeps the storage contract intentionally generic so a future PostgreSQL implementation can replace it without changing the `crawlers` or `extractors` interfaces.
+
+The repository is a small data-access layer rather than a full ORM:
+
+- schema is created explicitly with `initialize()`
+- records are upserted via a source URL key
+- duplicates are prevented by normalized URL uniqueness rather than application-side heuristics alone
+- bulk writes run inside a single transaction and rollback on any failure
+- canonical payloads are stored as JSON blobs while preserving provenance and freshness metadata in dedicated columns
+
+Default database location:
+
+- environment variable: `DATABASE_PATH`
+- fallback: `data/pipeline.sqlite3`
+
+This keeps the default behavior local, deterministic, and credential-free. No PostgreSQL, Redis, Docker, or secret configuration is required for this step.
+
+The persistence design stores canonical entity rows for:
+
+- Startup records
+- Product records
+- Research Paper records
+- Job records
+- News records
+
+The schema keeps the following metadata for each record:
+
+- `entity_type`
+- `source_url`
+- normalized `source_url_normalized`
+- `source_name`
+- `collected_at`
+- `published_date`
+- `freshness_status`
+- `freshness_reason`
+- full canonical record JSON payload
+
+Deterministic deduplication is based on a normalized source URL. Re-ingesting the same record does not create duplicates; it updates the existing row instead. This is enforced both in the application layer and in the SQLite uniqueness constraint, so the persistence layer remains idempotent and safe under retries.
+
 ## LLM extraction foundation
 
 The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
