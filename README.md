@@ -27,6 +27,10 @@ The pipeline uses [src/batch.py](src/batch.py) as a reusable asynchronous batch 
 
 This is a local bounded-concurrency design rather than distributed infrastructure. To move toward hundreds of thousands of records later, a durable work queue and partitioned workers could feed the same batch and pipeline contracts, while source-specific crawlers could reuse long-lived sessions and bounded batches. SQLite can remain useful for local development and validation; a later storage adapter could replace it behind the existing repository contract without changing provenance, result aggregation, or failure isolation.
 
+## End-to-end validation
+
+The offline integration coverage in [tests/test_end_to_end_pipeline.py](tests/test_end_to_end_pipeline.py) exercises the full local path: fake HTTP responses feed Startup, Job, and News freshness-aware adapters; fake LLM output covers Startup, Product, Research Paper, Job, and News extraction; the bounded job queue runs mixed-success work; deterministic entity resolution and SQLite persistence retain provenance; and the injectable Sheets client receives all six deterministic snapshots. The test also verifies optional GitHub fields, unresolved entities, isolated failures, audit counts, duplicate ingestion, and repeated exports without row duplication. No network, provider, Google credential, or external service is used.
+
 ## Scaling to 500k+ records
 
 The current [src/job_queue.py](src/job_queue.py) provides a transport-independent `PipelineJob` and `JobResult` contract backed by a bounded in-process `asyncio.Queue` and fixed worker set. `QUEUE_CONCURRENCY` and `QUEUE_MAX_RETRIES` control local throughput and retry behavior. Backpressure comes from the bounded queue, while crawler sessions, LLM chunk limits, and the existing batch boundary keep downstream work bounded. Failed jobs are isolated, retryable failures are retried up to the configured limit, and shutdown drains queued work before workers are cancelled.

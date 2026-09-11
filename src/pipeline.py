@@ -35,6 +35,7 @@ class PipelineBatchResult(BaseModel):
     total: int = 0
     processed: int = 0
     stored: int = 0
+    persisted: int = 0
     failed: int = 0
     succeeded: int = 0
     skipped: int = 0
@@ -42,6 +43,10 @@ class PipelineBatchResult(BaseModel):
     started: int = 0
     retried: int = 0
     cancelled: int = 0
+    fetched: int = 0
+    extracted: int = 0
+    resolved: int = 0
+    unresolved: int = 0
     duration_seconds: float = 0.0
     successes: list[dict[str, Any]] = Field(default_factory=list)
     failures: list[dict[str, Any]] = Field(default_factory=list)
@@ -113,7 +118,13 @@ class PipelineOrchestrator:
             if item_result.status == "succeeded" and item_result.value is not None:
                 record_result = item_result.value
                 result.stored += int(record_result.get("stored", 0))
-                result.successes.append(record_result["summary"])
+                result.persisted += int(record_result.get("stored", 0))
+                summary = record_result["summary"]
+                result.successes.append(summary)
+                result.fetched += 1
+                result.extracted += int(summary.get("extracted", 0))
+                result.resolved += int(summary.get("resolved", 0))
+                result.unresolved += int(summary.get("unresolved", 0))
             else:
                 failure = getattr(item_result.job.payload, "failure", None)
                 result.failures.append(failure or {
@@ -172,9 +183,15 @@ class PipelineOrchestrator:
             }
 
         persisted_records: list[Any] = []
+        resolved_count = 0
+        unresolved_count = 0
         for record in extraction.records:
             resolution = self._resolve_record_identity(record, source_url=source_url)
             if resolution is not None:
+                if resolution.canonical_name is None:
+                    unresolved_count += 1
+                else:
+                    resolved_count += 1
                 self._attach_resolution_metadata(record, resolution, source_url=source_url)
                 self.repository.upsert_mapping_log(self.entity_resolver.build_mapping_log(resolution, source_url=source_url))
             self.repository.upsert_record(record)
@@ -185,6 +202,9 @@ class PipelineOrchestrator:
             "source_name": source_name,
             "record_types": [getattr(record, "recordType", "UNKNOWN") for record in extraction.records],
             "stored": len(persisted_records),
+            "extracted": len(extraction.records),
+            "resolved": resolved_count,
+            "unresolved": unresolved_count,
         }
         return {
             "ok": True,
