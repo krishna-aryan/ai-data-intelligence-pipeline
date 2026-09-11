@@ -20,10 +20,10 @@ class Settings:
     llm_chunk_overlap_chars: int = 400
     gemini_model: str = "gemini-1.5-flash"
     groq_model: str = "llama-3.1-8b-instant"
-    deepseek_model: str = "deepseek-chat"
+    cerebras_model: str = "llama3.1-8b"
     gemini_api_key: str | None = None
     groq_api_key: str | None = None
-    deepseek_api_key: str | None = None
+    cerebras_api_key: str | None = None
     github_token: str | None = None
     database_url: str | None = None
     database_path: str | None = None
@@ -40,7 +40,7 @@ _DEFAULTS: Final[dict[str, object]] = {
     "LLM_MODEL": "gemini-1.5-flash",
     "GEMINI_MODEL": "gemini-1.5-flash",
     "GROQ_MODEL": "llama-3.1-8b-instant",
-    "DEEPSEEK_MODEL": "deepseek-chat",
+    "CEREBRAS_MODEL": "llama3.1-8b",
     "LLM_TIMEOUT": 30,
     "LLM_MAX_INPUT_CHARS": 20000,
     "LLM_CHUNK_OVERLAP_CHARS": 400,
@@ -58,7 +58,7 @@ def load_settings() -> Settings:
     llm_model = os.getenv("LLM_MODEL", str(_DEFAULTS["LLM_MODEL"]))
     gemini_model = os.getenv("GEMINI_MODEL", str(_DEFAULTS["GEMINI_MODEL"]))
     groq_model = os.getenv("GROQ_MODEL", str(_DEFAULTS["GROQ_MODEL"]))
-    deepseek_model = os.getenv("DEEPSEEK_MODEL", str(_DEFAULTS["DEEPSEEK_MODEL"]))
+    cerebras_model = os.getenv("CEREBRAS_MODEL", str(_DEFAULTS["CEREBRAS_MODEL"]))
     llm_timeout = int(os.getenv("LLM_TIMEOUT", str(_DEFAULTS["LLM_TIMEOUT"])))
     llm_max_input_chars = int(os.getenv("LLM_MAX_INPUT_CHARS", str(_DEFAULTS["LLM_MAX_INPUT_CHARS"])))
     llm_chunk_overlap_chars = int(
@@ -77,10 +77,10 @@ def load_settings() -> Settings:
         llm_chunk_overlap_chars=llm_chunk_overlap_chars,
         gemini_model=gemini_model,
         groq_model=groq_model,
-        deepseek_model=deepseek_model,
+        cerebras_model=cerebras_model,
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         groq_api_key=os.getenv("GROQ_API_KEY"),
-        deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        cerebras_api_key=os.getenv("CEREBRAS_API_KEY"),
         github_token=os.getenv("GITHUB_TOKEN"),
         database_url=os.getenv("DATABASE_URL"),
         database_path=os.getenv("DATABASE_PATH") or os.getenv("DATABASE_URL"),

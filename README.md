@@ -140,17 +140,18 @@ The project now includes a small LLM extraction layer under [src/llm](src/llm). 
 
 ### Gemini integration
 
-This repository uses the native Gemini REST API through the existing provider abstraction in [src/llm/provider.py](src/llm/provider.py). There is no separate abstraction layer or hidden credential path: the provider still conforms to the same `generate(prompt)` protocol used by the rest of the pipeline.
+This repository uses the native Gemini REST API through the existing provider abstraction in [src/llm/provider.py](src/llm/provider.py). The active fallback order is Gemini → Groq → Cerebras. The provider contract remains the same `generate(prompt)` interface used elsewhere in the pipeline.
 
 Configuration is environment-driven:
 
 - `GEMINI_API_KEY` required for live Gemini calls
-- `GEMINI_MODEL` or the default model configured in settings can override the model name
-- Groq and DeepSeek keys remain optional and are only used if present
+- `GROQ_API_KEY` enables Groq fallback
+- `CEREBRAS_API_KEY` enables Cerebras fallback
+- `GEMINI_MODEL`, `GROQ_MODEL`, and `CEREBRAS_MODEL` override the default model names
 
-The provider is intentionally isolated from the rest of the pipeline and is invoked through the same chunking and extraction code path as other backends. Large prompts are chunked before being sent to Gemini, and oversized requests are classified as `payload_too_large`/413 failures without fabricating data.
+The provider chain is intentionally isolated from the rest of the pipeline and is invoked through the same chunking and extraction code path as the other backends. Large prompts are chunked before sending them to a provider, and oversized requests are classified as `payload_too_large`/413 failures without fabricating data.
 
-Offline tests require no external API key. The live Gemini integration test is marked with the `live` marker and is skipped unless the environment explicitly includes `GEMINI_API_KEY` and the test is run with that marker enabled.
+Offline tests require no external API key. Live tests are marked with the `live` marker and are skipped unless their environment variable is set and the test is invoked explicitly.
 
 ### Strict extraction policy
 
@@ -347,7 +348,7 @@ Planned future variables:
 
 - GEMINI_API_KEY
 - GROQ_API_KEY
-- DEEPSEEK_API_KEY
+- CEREBRAS_API_KEY
 - DATABASE_URL
 - REDIS_URL
 - GOOGLE_SHEETS_CREDENTIALS
@@ -391,7 +392,7 @@ Planned future variables:
 
 - GEMINI_API_KEY
 - GROQ_API_KEY
-- DEEPSEEK_API_KEY
+- CEREBRAS_API_KEY
 - DATABASE_URL
 - REDIS_URL
 - GOOGLE_SHEETS_CREDENTIALS

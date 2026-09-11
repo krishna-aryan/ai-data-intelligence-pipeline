@@ -54,30 +54,30 @@ class GemRetryableError(ProviderRequestError):
 async def test_gemini_succeeds_without_fallback_call():
     gemini = FakeProvider("gemini", response='{"ok": true}')
     groq = FakeProvider("groq", response='{"ok": false}')
-    deepseek = FakeProvider("deepseek", response='{"ok": false}')
-    orchestrator = FallbackOrchestrator([gemini, groq, deepseek])
+    cerebras = FakeProvider("cerebras", response='{"ok": false}')
+    orchestrator = FallbackOrchestrator([gemini, groq, cerebras])
 
     result = await orchestrator.generate("hello")
 
     assert result == '{"ok": true}'
     assert len(gemini.calls) == 1
     assert len(groq.calls) == 0
-    assert len(deepseek.calls) == 0
+    assert len(cerebras.calls) == 0
 
 
 @pytest.mark.asyncio
 async def test_gemini_429_falls_back_to_groq():
     gemini = FakeProvider("gemini", error=GemRetryableError("rate_limited"))
     groq = FakeProvider("groq", response='{"ok": true}')
-    deepseek = FakeProvider("deepseek", response='{"ok": false}')
-    orchestrator = FallbackOrchestrator([gemini, groq, deepseek])
+    cerebras = FakeProvider("cerebras", response='{"ok": false}')
+    orchestrator = FallbackOrchestrator([gemini, groq, cerebras])
 
     result = await orchestrator.generate("hello")
 
     assert result == '{"ok": true}'
     assert len(gemini.calls) == 1
     assert len(groq.calls) == 1
-    assert len(deepseek.calls) == 0
+    assert len(cerebras.calls) == 0
 
 
 @pytest.mark.asyncio
@@ -153,44 +153,44 @@ async def test_groq_success_after_gemini_failure():
 
 
 @pytest.mark.asyncio
-async def test_deepseek_used_after_gemini_and_groq_fail():
+async def test_cerebras_used_after_gemini_and_groq_fail():
     gemini = FakeProvider("gemini", error=RuntimeError("provider down"))
     groq = FakeProvider("groq", error=RuntimeError("groq down"))
-    deepseek = FakeProvider("deepseek", response='{"ok": true}')
-    orchestrator = FallbackOrchestrator([gemini, groq, deepseek])
+    cerebras = FakeProvider("cerebras", response='{"ok": true}')
+    orchestrator = FallbackOrchestrator([gemini, groq, cerebras])
 
     result = await orchestrator.generate("hello")
 
     assert result == '{"ok": true}'
-    assert orchestrator.last_provider_used == "deepseek"
+    assert orchestrator.last_provider_used == "cerebras"
 
 
 @pytest.mark.asyncio
 async def test_all_providers_fail_returns_structured_failure():
     gemini = FakeProvider("gemini", error=RuntimeError("gemini down"))
     groq = FakeProvider("groq", error=RuntimeError("groq down"))
-    deepseek = FakeProvider("deepseek", error=RuntimeError("deepseek down"))
-    orchestrator = FallbackOrchestrator([gemini, groq, deepseek])
+    cerebras = FakeProvider("cerebras", error=RuntimeError("cerebras down"))
+    orchestrator = FallbackOrchestrator([gemini, groq, cerebras])
 
     with pytest.raises(ProviderFallbackError) as excinfo:
         await orchestrator.generate("hello")
 
     err = excinfo.value
     assert err.final_status == "all_providers_failed"
-    assert err.providers_attempted == ["gemini", "groq", "deepseek"]
+    assert err.providers_attempted == ["gemini", "groq", "cerebras"]
     assert len(err.provider_failures) == 3
     assert err.provider_failures[0].provider_name == "gemini"
 
 
 @pytest.mark.asyncio
 async def test_provider_order_is_deterministic():
-    providers = [FakeProvider("deepseek", response='{"ok": true}'), FakeProvider("gemini", response='{"ok": true}')]
+    providers = [FakeProvider("cerebras", response='{"ok": true}'), FakeProvider("gemini", response='{"ok": true}')]
     orchestrator = FallbackOrchestrator(providers)
 
     result = await orchestrator.generate("hello")
 
     assert result == '{"ok": true}'
-    assert orchestrator.providers[0].name == "deepseek"
+    assert orchestrator.providers[0].name == "cerebras"
     assert orchestrator.providers[1].name == "gemini"
 
 
