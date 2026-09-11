@@ -47,7 +47,19 @@ The explicit live command is:
 python -m src.main --mode live
 ```
 
-Live mode currently fails clearly because source URL configuration and a complete live workflow runner have not yet been connected. It never falls back to demo data. The existing crawler, provider, SQLite, and Google Sheets components remain available for future live wiring; no live end-to-end execution is claimed or required for offline-demo.
+Live mode uses only the explicitly configured public source URLs below and never falls back to demo data. Missing source URLs are skipped; if none are configured, the command exits with an actionable error. Source ingestion can run without LLM credentials, but canonical extraction/persistence requires at least one configured Gemini, Groq, or Cerebras provider. Google Sheets remains a separate configured export step and is not run automatically by this CLI mode.
+
+Configure public sources with placeholders such as:
+
+```text
+STARTUP_SOURCE_URL=
+PRODUCT_SOURCE_URL=
+RESEARCH_PAPER_SOURCE_URL=
+JOB_SOURCE_URL=
+NEWS_SOURCE_URL=
+```
+
+Only provide public structured feed/API URLs you are authorized to access. The CLI does not discover arbitrary websites, bypass CAPTCHAs, or use restricted sources.
 
 ## Scaling to 500k+ records
 

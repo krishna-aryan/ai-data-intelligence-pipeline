@@ -33,6 +33,11 @@ class Settings:
     redis_url: str | None = None
     google_sheets_credentials: str | None = None
     google_sheets_spreadsheet_id: str | None = None
+    startup_source_url: str | None = None
+    product_source_url: str | None = None
+    research_paper_source_url: str | None = None
+    job_source_url: str | None = None
+    news_source_url: str | None = None
 
 
 _DEFAULTS: Final[dict[str, object]] = {
@@ -100,4 +105,9 @@ def load_settings() -> Settings:
         redis_url=os.getenv("REDIS_URL"),
         google_sheets_credentials=os.getenv("GOOGLE_SHEETS_CREDENTIALS"),
         google_sheets_spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID"),
+        startup_source_url=os.getenv("STARTUP_SOURCE_URL"),
+        product_source_url=os.getenv("PRODUCT_SOURCE_URL"),
+        research_paper_source_url=os.getenv("RESEARCH_PAPER_SOURCE_URL"),
+        job_source_url=os.getenv("JOB_SOURCE_URL"),
+        news_source_url=os.getenv("NEWS_SOURCE_URL"),
     )
