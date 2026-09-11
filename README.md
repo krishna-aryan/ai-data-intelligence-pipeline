@@ -138,6 +138,49 @@ Deterministic deduplication is based on a normalized source URL. Re-ingesting th
 
 The project now includes a small LLM extraction layer under [src/llm](src/llm). It follows a narrow contract:
 
+### Gemini integration
+
+This repository uses the native Gemini REST API through the existing provider abstraction in [src/llm/provider.py](src/llm/provider.py). There is no separate abstraction layer or hidden credential path: the provider still conforms to the same `generate(prompt)` protocol used by the rest of the pipeline.
+
+Configuration is environment-driven:
+
+- `GEMINI_API_KEY` required for live Gemini calls
+- `GEMINI_MODEL` or the default model configured in settings can override the model name
+- Groq and DeepSeek keys remain optional and are only used if present
+
+The provider is intentionally isolated from the rest of the pipeline and is invoked through the same chunking and extraction code path as other backends. Large prompts are chunked before being sent to Gemini, and oversized requests are classified as `payload_too_large`/413 failures without fabricating data.
+
+Offline tests require no external API key. The live Gemini integration test is marked with the `live` marker and is skipped unless the environment explicitly includes `GEMINI_API_KEY` and the test is run with that marker enabled.
+
+### Strict extraction policy
+
+Gemini output is still constrained by the project’s strict rules:
+
+- JSON only
+- canonical schema only
+- preserve the source URL from the original request
+- do not invent missing values
+- missing fields remain `null` or omitted according to the schema
+- malformed outputs are rejected before persistence
+- rate limits, timeouts, and transient server failures are surfaced as structured provider errors
+
+## Gemini setup
+
+Create a local `.env` file (which stays gitignored) containing:
+
+```bash
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-1.5-flash
+```
+
+For the optional live test, run:
+
+```bash
+pytest -q -m live tests/test_live_gemini.py
+```
+
+The default offline suite remains safe for CI and local development without any API key present.
+
 ## Chunking and 413 protection
 
 Large source documents are chunked before they are sent to an LLM provider. This is a conservative input-size guard designed to prevent oversized requests and provider-level 413 responses before they happen. The implementation is intentionally character-based rather than token-based because the codebase does not yet include a real tokenizer; this is a safe size-control heuristic until the tokenizer layer is introduced.
