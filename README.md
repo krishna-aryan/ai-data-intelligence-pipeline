@@ -31,6 +31,24 @@ This is a local bounded-concurrency design rather than distributed infrastructur
 
 The offline integration coverage in [tests/test_end_to_end_pipeline.py](tests/test_end_to_end_pipeline.py) exercises the full local path: fake HTTP responses feed Startup, Job, and News freshness-aware adapters; fake LLM output covers Startup, Product, Research Paper, Job, and News extraction; the bounded job queue runs mixed-success work; deterministic entity resolution and SQLite persistence retain provenance; and the injectable Sheets client receives all six deterministic snapshots. The test also verifies optional GitHub fields, unresolved entities, isolated failures, audit counts, duplicate ingestion, and repeated exports without row duplication. No network, provider, Google credential, or external service is used.
 
+## Running the CLI
+
+From the repository root, run the credential-free Loom/demo path:
+
+```powershell
+python -m src.main --mode offline-demo
+```
+
+This uses clearly labeled deterministic DEMO / TEST FIXTURES, a temporary SQLite database, the existing queue and orchestrator, and an injectable fake Sheets client. It prints audit and queue metrics plus the six exported tab names. It is for demonstrating orchestration only, not real intelligence data.
+
+The explicit live command is:
+
+```powershell
+python -m src.main --mode live
+```
+
+Live mode currently fails clearly because source URL configuration and a complete live workflow runner have not yet been connected. It never falls back to demo data. The existing crawler, provider, SQLite, and Google Sheets components remain available for future live wiring; no live end-to-end execution is claimed or required for offline-demo.
+
 ## Scaling to 500k+ records
 
 The current [src/job_queue.py](src/job_queue.py) provides a transport-independent `PipelineJob` and `JobResult` contract backed by a bounded in-process `asyncio.Queue` and fixed worker set. `QUEUE_CONCURRENCY` and `QUEUE_MAX_RETRIES` control local throughput and retry behavior. Backpressure comes from the bounded queue, while crawler sessions, LLM chunk limits, and the existing batch boundary keep downstream work bounded. Failed jobs are isolated, retryable failures are retried up to the configured limit, and shutdown drains queued work before workers are cancelled.
